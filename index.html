@@ -281,7 +281,19 @@
   .wound-log.effaced{border-color:var(--rose)}
   .wound-log.effaced .wl-head{color:var(--rose)}
 
+  /* ---------- glossary tooltips ---------- */
+  .gloss{border-bottom:1px dotted rgba(232,184,115,.40); cursor:help; text-underline-offset:2px}
+  .gloss:hover{border-bottom-color:var(--gold)}
+  #glossTip{position:fixed; z-index:60; max-width:286px; background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line2); border-left:3px solid var(--gold); border-radius:8px; padding:11px 14px;
+    box-shadow:0 10px 34px rgba(0,0,0,.55); pointer-events:none; opacity:0; transform:translateY(4px);
+    transition:opacity .16s ease, transform .16s ease}
+  #glossTip.show{opacity:1; transform:none}
+  #glossTip .t{font-family:var(--serif); font-style:italic; color:var(--gold-bright); font-size:16px; display:block; margin-bottom:4px}
+  #glossTip .d{font-size:13.5px; color:var(--text-dim); line-height:1.5}
+
   @media(prefers-reduced-motion: reduce){
+    #glossTip{transition:none}
     .reveal{transition:none} .scroll-cue{animation:none}
     .wl-item{animation:none}
   }
@@ -1480,6 +1492,113 @@ drawSigil($("#footSeal"), "#d98a8a");
     entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add("in"); obs.unobserve(en.target);} });
   },{threshold:0.12});
   $$(".reveal").forEach(s=>obs.observe(s));
+})();
+
+/* ============================================================
+   GLOSSARY TOOLTIPS — Sahíric terms in the prose, on hover/tap
+   ============================================================ */
+(function(){
+  const G = {
+    "Šahír":"The Radiance; the Source — undivided, conscious light from which all things cool.",
+    "šahr":"Radiance as substance; light.",
+    "Šahrún":"The Fullness — the realm or condition of pure radiance behind the world.",
+    "Qenʾah":"The Ladder of Degrees — the graded descent from radiance to the Cinder.",
+    "šahar":"An emanation; a living beam of radiance (the second degree).",
+    "šehir":"Mind; consciousness (the third degree) — the one rung thin enough to be wounded.",
+    "šohar":"A living being; quickened matter (the fourth degree).",
+    "šuhor":"Wrought matter that still holds a little light (the fifth degree).",
+    "šahrut":"Dust; dead stone (the sixth degree) — the fully cooled.",
+    "berzá":"Iron; the Cinder — radiance fallen to the floor of its own well, with no slope left.",
+    "Berzhár":"An iron-mount: a prison-mountain of iron under which the Sealed are buried.",
+    "Šemmá":"The Sun — a single vast mind; the nearest aperture of the Radiance.",
+    "šem":"A star; a distant aperture of the Radiance.",
+    "šemím":"Stars; distant apertures of the Radiance.",
+    "qadína":"A Visitant — an emanation of the solar mind that walks the cooled world.",
+    "Qadín":"The Visitants — emanations of the solar mind; the Daughters of the Sun.",
+    "séqa":"The wound: a puncture cut into a mind, opening onto the Fullness.",
+    "seqím":"Wounds; punctures onto the Fullness.",
+    "seqál":"A wounded one; a bearer of the puncture, able to work radiance.",
+    "seqálim":"The wounded ones; bearers of the puncture.",
+    "qol":"A Working done by voice; an utterance of power.",
+    "qolím":"Workings done by voice.",
+    "ʾot":"A Working done by gesture; a Sign.",
+    "qalá":"To speak; to work by voice.",
+    "qorbán":"The toll: the self and memory burned away by a Working.",
+    "naší":"To forget; to lose self.",
+    "maḥúq":"An Effaced one — a mind consumed into the Source; vast, and no longer a person.",
+    "Maḥúq":"The Effaced — minds consumed into the Source; vast, and no longer persons.",
+    "ḥatím":"A Sealed One — an imprisoned seqál.",
+    "Ḥatúm":"The Sealed — wounded ones bound and buried in iron.",
+    "Ḥatumín":"The Wardens of the Seal; the order that keeps the cages.",
+    "lešān":"Tongue; language.",
+    "Lešān-Šahír":"“Tongue of the Radiance” — the Sahíric language.",
+    "Sahíric":"The liturgical and philosophical tongue of Qelán.",
+    "sefer":"A book; a codex.",
+    "Sefer-Qenát":"“The Book of Degrees” — this codex.",
+    "Qelán":"The world — “the Descended.”",
+    "Veshpor":"A city of the Long Quiet; seat of the Collegium.",
+    "Petáḥ-Séqa":"“Opener-of-the-Wound” — the title of the First Opener.",
+    "men-qol":"An against-Working — forcing matter back up the Ladder; the breaking of iron.",
+    "men-":"Inversion particle: a low thing acting against the Ladder.",
+    "qanén":"To descend; to cool.",
+    "nūr":"A lamp; a flame."
+  };
+
+  let RE;
+  try{
+    const keys=Object.keys(G).sort((a,b)=>b.length-a.length)
+      .map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+    RE=new RegExp("(^|[^\\p{L}\\p{M}])("+keys.join("|")+")(?=[^\\p{L}\\p{M}]|$)","gu");
+  }catch(err){ return; } // engine without Unicode property escapes — skip gracefully
+
+  // tag terms in static prose only (skip interactive widgets, which already show definitions)
+  $$("p, .fig-cap, .epithet, .age-detail")
+    .filter(c=> !c.closest(".widget, #ladderDetail, #dictList"))
+    .forEach(scan);
+
+  function scan(container){
+    const walker=document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    const nodes=[]; let cn; while(cn=walker.nextNode()) nodes.push(cn);
+    nodes.forEach(node=>{
+      if(node.parentElement && node.parentElement.closest(".gloss")) return;
+      const text=node.nodeValue; if(!text || text.length<3) return;
+      RE.lastIndex=0;
+      let m, last=0, hit=false; const frag=document.createDocumentFragment();
+      while(m=RE.exec(text)){
+        const term=m[2], start=m.index+m[1].length;
+        if(start>last) frag.appendChild(document.createTextNode(text.slice(last,start)));
+        const span=document.createElement("span");
+        span.className="gloss"; span.setAttribute("data-def", G[term]); span.textContent=term;
+        frag.appendChild(span);
+        last=start+term.length; hit=true;
+      }
+      if(!hit) return;
+      if(last<text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      node.parentNode.replaceChild(frag,node);
+    });
+  }
+
+  // shared floating tooltip
+  const tip=document.createElement("div"); tip.id="glossTip";
+  tip.innerHTML='<span class="t"></span><span class="d"></span>';
+  document.body.appendChild(tip);
+  const tT=tip.querySelector(".t"), tD=tip.querySelector(".d");
+  let cur=null;
+  function place(g){
+    const r=g.getBoundingClientRect(), tr=tip.getBoundingClientRect();
+    let left=r.left+r.width/2-tr.width/2;
+    left=Math.max(10, Math.min(left, innerWidth-tr.width-10));
+    let top=r.top-tr.height-9;
+    if(top<10) top=r.bottom+9;
+    tip.style.left=Math.round(left)+"px"; tip.style.top=Math.round(top)+"px";
+  }
+  function show(g){ cur=g; tT.textContent=g.textContent; tD.textContent=g.getAttribute("data-def")||""; tip.classList.add("show"); place(g); }
+  function hide(){ cur=null; tip.classList.remove("show"); }
+  document.addEventListener("mouseover", e=>{ const g=e.target.closest&&e.target.closest(".gloss"); if(g) show(g); });
+  document.addEventListener("mouseout",  e=>{ const g=e.target.closest&&e.target.closest(".gloss"); if(g) hide(); });
+  document.addEventListener("click",     e=>{ const g=e.target.closest&&e.target.closest(".gloss"); if(g){ e.preventDefault(); (cur===g)?hide():show(g); } else hide(); });
+  addEventListener("scroll", ()=>{ if(cur) hide(); }, {passive:true});
+  addEventListener("resize", ()=>{ if(cur) hide(); });
 })();
 </script>
 </body>
